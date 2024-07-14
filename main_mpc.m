@@ -20,12 +20,8 @@ r_delta_t = 0.01;
 r_s = r_ego + r_delta_t;
 r0 = 0.001;
 
-initial_epsilon = 0.005;
+%initial_epsilon = 0.005;
 epsilon_desired = 0.002;
-
-
-% provide a warm start path - differential flatness 
-% load or run build_global_occupancy.
 
    %% Step 0: Obtain a local occupancy map centered around the vehicle current position
     % Load the saved global occupancy map
@@ -85,7 +81,7 @@ epsilon_desired = 0.002;
     obstacle_3_length = 0.1;
 
     r_val1 = r_obstacle1 + r_ego;
-    r_val2 = r_obstacle2 + r_ego;
+
 
     obstacle1_xindex = (x_obstacle1 - local_x_min)/r_map;
     obstacle1_yindex = (y_obstacle1 - local_y_min)/r_map;
@@ -263,7 +259,6 @@ epsilon_desired = 0.002;
   
     end
 
-
     % Define the parameters going into the controller
     parameters_in = {x_var{1}, r_var{:}, Aineq1{:},bineq1{:}};
     solutions_out = {[x_var{:}],[u_var{:}]};
@@ -281,23 +276,30 @@ epsilon_desired = 0.002;
 
 while (counter < (length(tsim) - 1 - n_horizon))
         input_list = {};
-        input_list{1} = initial_position; % initialize the robot position to be the first position in the reference trajectory        sub_counter = 2; 
+        input_list{1} = initial_position; % initialize the robot position to be the first position in the reference trajectory
         sub_counter = 2;    
         for i = 1:n_horizon
             input_list{sub_counter} = [x_traj_ref(counter + i); y_traj_ref(counter + i); dot_x_traj_ref(counter + i); dot_y_traj_ref(counter + i)];
             sub_counter = sub_counter + 1;
         end
-
-        m_term1 = []; m_term2 = [];  b_term_1 = []; b_term_2 = [];
+        
+        % Initialize the obstacles of the terms
+        m_term1 = [];
+        b_term_1 = [];
+        % Define the slope of the half plane w/o to the obstacle
         for iii = 2:n_horizon
             pbar_k = initial_position_bar(1:2,iii-1);                         
             m_term1(:,iii-1) = -(pbar_k - [x_obstacle1;y_obstacle1]);
+            b_term_1(iii-1) =  [x_obstacle1;y_obstacle1]'*(pbar_k -  [x_obstacle1;y_obstacle1]) + r_val1 * norm(pbar_k -[x_obstacle1;y_obstacle1],2);
+
         end
-        for i = 1: n_horizon -1
+        for i = 1: n_horizon - 1
             input_list{sub_counter} = m_term1(:,i);
-            sub_counter = sub_counter+ 1;
+            sub_counter = sub_counter + 1;
         end
-        for i = 1: n_horizon
+        % should be the same as the size of your u. and then redefine the
+        % terms 
+        for i = 1: n_horizon - 1
             input_list{sub_counter} = - b_term_1(i);
             sub_counter = sub_counter + 1;
         end
@@ -315,13 +317,13 @@ while (counter < (length(tsim) - 1 - n_horizon))
         Ts = 0.001; % define the 
         [Kd, ~, ~] = lqrd(Ad_val, Bd_val, Q_cost, R_cost,Ts); 
         difference_traj = initial_position - x_mpc;
-        u_lqr = Kd * difference_traj;
+        u_lqr = -Kd * difference_traj;
         u_total = u_current_point + 0*u_lqr; % there seems to be an issue with the lqr where it destabilizes the system instead of making it work.
        
         %% Step 6 - Forward simulation with the combined new controller
         options = odeset('RelTol', 1e-3, 'AbsTol', 1e-6);
         perturbations = 0.01;
-        [t, qt_ode] = ode45(@(t, qt) true_dynamics_ugv_ct(t, qt, u_total, perturbations),[tsim(counter),tsim(counter + 1)],initial_position);
+        [t, qt_ode] = ode45(@(t, qt) true_dynamics_ugv_ct(t, qt, u_total),[tsim(counter),tsim(counter + 1)],initial_position);
         contoller_path_output = qt_ode;
         initial_position = qt_ode(end,:)'; % the last position of the new total controller is the new position
 
@@ -355,7 +357,7 @@ while (counter < (length(tsim) - 1 - n_horizon))
        % Update tube radius based on Z
        % r0 = sqrt(norm(Z, 2)^2 / 4); need to calculate after i find
        % the value of alpha
-       r_delta_t = sqrt(norm(Z, 2)^2 / 4); 
+       r_val1 = sqrt(norm(Z, 2)^2 / 4); % changing the radius of the ego vehicle
        %epsilon_values(t_step) = initial_epsilon;
        
        % Apply threshold to get boolean condition
@@ -381,13 +383,12 @@ while (counter < (length(tsim) - 1 - n_horizon))
         % Plot the trajectroy followed by the controller based on the MPC
         % optimization
         plot(initial_position_trajectory(:, 1), initial_position_trajectory(:, 2), 'go', 'LineWidth', 2, 'DisplayName', 'Controller Trajectory');
-
-        % scatter(initial_position(1), initial_position(2), 100, 'filled', 'MarkerFaceColor', 'r', 'DisplayName', 'Initial Position');
         
         % Plot the obstacles
         scatter(x_obstacle1, y_obstacle1, 'k', 'LineWidth', 2, 'DisplayName', 'Obstacle 1');
-        scatter(x_obstacle2, y_obstacle2, 'k', 'LineWidth', 2, 'DisplayName', 'Obstacle 2');
-        scatter(x_obstacle3, y_obstacle3, 'k', 'LineWidth', 2, 'DisplayName', 'Obstacle 3');
+        X1_example =[x_obstacle1, y_obstacle1];
+        viscircles(X1_example, r_val1, 'LineStyle', '--', 'Color', 'r', LineWidth=2.0); % Plot safety radius circle
+
 
         title('Combined Controller Trajectory vs Reference Trajectory');
         xlabel('X - axis');
