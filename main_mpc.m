@@ -14,10 +14,10 @@ n_horizon = 20;
 % provide intialization to your simulator, state, have a initial safety
 
 % Define an initial buffer
-r_ego = 0.3; % robot radius
+r_s = 0.3; % robot radius
 r_map = 0.05;  % define the grid map resolution
 r_delta_t = 0.01;
-r_s = r_ego + r_delta_t;
+r_ego = r_s + r_delta_t;
 r0 = 0.001;
 
 %initial_epsilon = 0.005;
@@ -318,7 +318,7 @@ while (counter < (length(tsim) - 1 - n_horizon))
         [Kd, ~, ~] = lqrd(Ad_val, Bd_val, Q_cost, R_cost,Ts); 
         difference_traj = initial_position - x_mpc;
         u_lqr = -Kd * difference_traj;
-        u_total = u_current_point + 0*u_lqr; % there seems to be an issue with the lqr where it destabilizes the system instead of making it work.
+        u_total = u_current_point + u_lqr; % there seems to be an issue with the lqr where it destabilizes the system instead of making it work.
        
         %% Step 6 - Forward simulation with the combined new controller
         options = odeset('RelTol', 1e-3, 'AbsTol', 1e-6);
@@ -357,7 +357,7 @@ while (counter < (length(tsim) - 1 - n_horizon))
        % Update tube radius based on Z
        % r0 = sqrt(norm(Z, 2)^2 / 4); need to calculate after i find
        % the value of alpha
-       r_val1 = sqrt(norm(Z, 2)^2 / 4); % changing the radius of the ego vehicle
+       r_s = sqrt(norm(Z, 2)^2 / 4); % changing the radius of the ego vehicle
        %epsilon_values(t_step) = initial_epsilon;
        
        % Apply threshold to get boolean condition
